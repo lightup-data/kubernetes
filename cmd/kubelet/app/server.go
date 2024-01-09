@@ -1240,7 +1240,9 @@ func createAndInitKubelet(kubeServer *options.KubeletServer,
 		kubeServer.KeepTerminatedPodVolumes,
 		kubeServer.NodeLabels,
 		kubeServer.NodeStatusMaxImages,
-		kubeServer.KubeletFlags.SeccompDefault || kubeServer.KubeletConfiguration.SeccompDefault)
+		kubeServer.KubeletFlags.SeccompDefault || kubeServer.KubeletConfiguration.SeccompDefault,
+		make(map[types.UID]context.Context),
+	)
 	if err != nil {
 		return nil, err
 	}

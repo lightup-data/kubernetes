@@ -353,6 +353,8 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	nodeLabels map[string]string,
 	nodeStatusMaxImages int32,
 	seccompDefault bool,
+	orphanPodsBeingHandled map[types.UID]context.Context,
+
 ) (*Kubelet, error) {
 	ctx := context.Background()
 	logger := klog.TODO()
@@ -913,6 +915,8 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	// since this relies on the rest of the Kubelet having been constructed.
 	klet.setNodeStatusFuncs = klet.defaultNodeStatusFuncs()
 
+	klet.orphanPodsBeingHandled = make(map[types.UID]context.Context);
+
 	return klet, nil
 }
 
@@ -1250,6 +1254,9 @@ type Kubelet struct {
 
 	// Manage user namespaces
 	usernsManager *usernsManager
+
+	// Orphan pods being handled already
+	orphanPodsBeingHandled map[types.UID]context.Context
 }
 
 // ListPodStats is delegated to StatsProvider, which implements stats.Provider interface

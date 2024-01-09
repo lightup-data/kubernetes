@@ -1984,6 +1984,41 @@ func (kl *Kubelet) GetPortForward(ctx context.Context, podName, podNamespace str
 	return kl.streamingRuntime.GetPortForward(ctx, podName, podNamespace, podUID, portForwardOpts.Ports)
 }
 
+func (kl *Kubelet) fireWithContext(m map[types.UID]context.Context, pcm cm.PodContainerManager, uid types.UID, val cm.CgroupName){
+	ctx, _ := context.WithCancel(context.Background())
+	m[uid] = ctx
+	go pcm.Destroy(val)
+}
+func (kl *Kubelet) destroyCgroupWithContext(pcm cm.PodContainerManager, uid types.UID, val cm.CgroupName) {
+
+	c := kl.orphanPodsBeingHandled[uid]
+
+	if c == nil {
+		kl.fireWithContext(kl.orphanPodsBeingHandled, pcm, uid, val)
+		return
+	}
+
+	select {
+	case <-c.Done():
+		kl.fireWithContext(kl.orphanPodsBeingHandled, pcm, uid, val)
+	default:
+		klog.V(3).InfoS("Orphaned pod already being handled, skipping", "podUID", uid)
+	}
+
+}
+
+func (kl *Kubelet) cleanupOrphanPodMap() {
+	for k, v := range kl.orphanPodsBeingHandled {
+		if v == nil { continue }
+		select {
+		case <-v.Done():
+			delete(kl.orphanPodsBeingHandled, k)
+		default:
+			continue
+		}
+	}
+}
+
 // cleanupOrphanedPodCgroups removes cgroups that should no longer exist.
 // it reconciles the cached state of cgroupPods with the specified list of runningPods
 func (kl *Kubelet) cleanupOrphanedPodCgroups(pcm cm.PodContainerManager, cgroupPods map[types.UID]cm.CgroupName, possiblyRunningPods map[types.UID]sets.Empty) {
@@ -2011,9 +2046,12 @@ func (kl *Kubelet) cleanupOrphanedPodCgroups(pcm cm.PodContainerManager, cgroupP
 		// by first killing all the attached processes to these cgroups.
 		// We ignore errors thrown by the method, as the housekeeping loop would
 		// again try to delete these unwanted pod cgroups
-		go pcm.Destroy(val)
+		kl.destroyCgroupWithContext(pcm, uid, val)
 	}
+	kl.cleanupOrphanPodMap()
 }
+
+
 
 // enableHostUserNamespace determines if the host user namespace should be used by the container runtime.
 // Returns true if the pod is using a host pid, pic, or network namespace, the pod is using a non-namespaced
